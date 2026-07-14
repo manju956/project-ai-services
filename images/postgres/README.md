@@ -1,6 +1,7 @@
-# PostgreSQL 18 Container Image
+# PostgreSQL 18 + pgvector Container Image
 
-This directory contains a custom PostgreSQL 18 container image based on Red Hat Universal Base Image 9 (UBI 9).
+This directory contains a custom PostgreSQL 18 container image based on Red Hat Universal Base Image 9 (UBI 9),
+with the [pgvector](https://github.com/pgdl/pgvector) extension pre-installed for vector similarity search.
 
 > **Note**: This image is based on the [official PostgreSQL Docker images](https://github.com/docker-library/postgres) maintained by the Docker Community. The entrypoint scripts and initialization logic are adapted from that project.
 
@@ -8,18 +9,27 @@ This directory contains a custom PostgreSQL 18 container image based on Red Hat 
 
 This PostgreSQL image is designed for production use with the following features:
 
-- **Base Image**: Red Hat UBI 9
+- **Base Image**: Red Hat UBI 9 Minimal
 - **PostgreSQL Version**: 18
-- **Architecture Support**: ppc64le
+- **pgvector Version**: latest `pgvector_18` from PGDG RPM repo (≥ 0.7.0)
+- **Architecture Support**: ppc64le, x86_64, aarch64
 - **User Management**: Runs as non-root `postgres` user (UID/GID 26)
 - **Data Directory**: `/var/lib/pgsql/18/data` (compatible with pg_ctlcluster)
 - **Volume Mount**: `/var/lib/pgsql`
 
 ## Features
 
+### pgvector Extension
+- Installed from the official PGDG RPM (`pgvector_18`) — no source compilation required
+- `CREATE EXTENSION vector` runs automatically on first container start via `/docker-entrypoint-initdb.d/001-pgvector.sql`
+- Provides `vector` data type (up to 16 000 dimensions) and index methods:
+  - `ivfflat` — inverted file index, fast approximate search with tunable recall
+  - `hnsw` — Hierarchical Navigable Small World, higher recall, larger build memory footprint
+- Supports `<->` (L2), `<#>` (inner product), `<=>` (cosine) distance operators
+
 ### Security
 - Runs as non-root user by default
-- Uses `gosu` for privilege de-escalation
+- Uses `gosu` compiled from source (no prebuilt binary) for privilege de-escalation
 - Configurable authentication methods via environment variables
 
 ### Initialization
@@ -48,13 +58,28 @@ make build
 Or manually:
 
 ```bash
-podman build -t postgres:18 .
+podman build -t postgres:18-pgvector .
 ```
 
 ### Build for ppc64le Architecture
 
+The image is built natively on ppc64le — no cross-compilation or QEMU required. The CI
+pipeline (`ubuntu-24.04-ppc64le` runner) builds it directly. To build locally on a ppc64le
+host:
+
 ```bash
-make build PLATFORM=ppc64le
+make build
+# or
+podman build -t postgres:18-4 .
+```
+
+### Verify pgvector
+
+```bash
+make pgvector-test
+# or
+podman run --rm -e POSTGRES_PASSWORD=test icr.io/ai-services/postgres:18-4 \
+  bash -c 'ls /usr/pgsql-18/lib/vector.so && echo OK'
 ```
 
 ## Running the Container
@@ -67,21 +92,51 @@ podman run -d \
   -e POSTGRES_PASSWORD=mysecretpassword \
   -p 5432:5432 \
   -v pgdata:/var/lib/pgsql \
-  postgres:18
+  icr.io/ai-services/postgres:18-4
 ```
 
-### With Custom Database and User
+### Verify pgvector is working after start
+
+```bash
+podman exec -it postgres psql -U postgres -c "SELECT extversion FROM pg_extension WHERE extname = 'vector';"
+# expected output: a version string such as 0.8.0
+```
+
+### Store and query vectors
+
+```sql
+-- create a table with a 1536-dim embedding column
+CREATE TABLE embeddings (
+    id     BIGSERIAL PRIMARY KEY,
+    source TEXT,
+    emb    vector(1536)
+);
+
+-- add an HNSW index for cosine similarity search
+CREATE INDEX ON embeddings USING hnsw (emb vector_cosine_ops);
+
+-- nearest-neighbour query
+SELECT source, emb <=> '[0.1, 0.2, ...]'::vector AS distance
+FROM   embeddings
+ORDER  BY distance
+LIMIT  10;
+```
+
+### With Custom Database and User (Vector DB use-case)
 
 ```bash
 podman run -d \
   --name postgres \
-  -e POSTGRES_DB=myapp \
-  -e POSTGRES_USER=myuser \
+  -e POSTGRES_DB=rag_vectors \
+  -e POSTGRES_USER=raguser \
   -e POSTGRES_PASSWORD=mypassword \
   -p 5432:5432 \
   -v pgdata:/var/lib/pgsql \
-  postgres:18
+  icr.io/ai-services/postgres:18-4
 ```
+
+> **Note**: `CREATE EXTENSION IF NOT EXISTS vector` runs automatically against
+> `POSTGRES_DB` on first start. No manual step is required.
 
 ## Environment Variables
 
@@ -228,5 +283,7 @@ This image is based on the [official PostgreSQL Docker images](https://github.co
 ## References
 
 - [PostgreSQL Official Documentation](https://www.postgresql.org/docs/18/)
+- [pgvector GitHub](https://github.com/pgdl/pgvector) — open-source vector similarity search for PostgreSQL
+- [PGDG RPM Repository](https://yum.postgresql.org/) — official PostgreSQL RPM packages including `pgvector_18`
 - [PostgreSQL Docker Library](https://github.com/docker-library/postgres) - Original source for entrypoint scripts
 - [Red Hat UBI](https://www.redhat.com/en/blog/introducing-red-hat-universal-base-image)

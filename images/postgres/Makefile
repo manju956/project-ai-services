@@ -1,6 +1,6 @@
 REGISTRY?=icr.io/ai-services-private
 IMAGE=postgres
-TAG?=18-3
+TAG?=18-4
 CREDS_ARG := $(if $(and $(REGISTRY_USER),$(REGISTRY_PASSWORD)),--creds="$(REGISTRY_USER):$(REGISTRY_PASSWORD)")
 
 # Image references
@@ -60,21 +60,32 @@ test:
 	@echo "PostgreSQL image test passed!"
 .PHONY: test
 
+# Smoke-test that pgvector extension files are present and loadable
+pgvector-test:
+	@echo "Testing pgvector extension..."
+	$(CONTAINER_BUILDER) run --rm \
+		-e POSTGRES_PASSWORD=testpassword \
+		$(IMAGE_TAG) \
+		bash -c 'ls /usr/pgsql-18/lib/vector.so && ls /usr/pgsql-18/share/extension/vector.control && echo "pgvector files OK"'
+	@echo "pgvector smoke test passed!"
+.PHONY: pgvector-test
+
 help:
-	@echo "PostgreSQL Container Image Makefile"
+	@echo "PostgreSQL + pgvector Container Image Makefile"
 	@echo ""
 	@echo "Available targets:"
-	@echo "  build        - Build the PostgreSQL image for current platform"
-	@echo "  push         - Push the image to registry"
-	@echo "  image-tag    - Print the full image tag"
-	@echo "  run          - Run a development PostgreSQL container"
-	@echo "  stop         - Stop and remove the development container"
-	@echo "  logs         - Show logs from development container"
-	@echo "  shell        - Open a shell in the development container"
-	@echo "  psql         - Open psql client in the development container"
-	@echo "  clean        - Remove development container and volume"
-	@echo "  test         - Run basic image tests"
-	@echo "  help         - Show this help message"
+	@echo "  build          - Build the PostgreSQL+pgvector image for current platform"
+	@echo "  push           - Push the image to registry"
+	@echo "  image-tag      - Print the full image tag"
+	@echo "  run            - Run a development PostgreSQL container"
+	@echo "  stop           - Stop and remove the development container"
+	@echo "  logs           - Show logs from development container"
+	@echo "  shell          - Open a shell in the development container"
+	@echo "  psql           - Open psql client in the development container"
+	@echo "  clean          - Remove development container and volume"
+	@echo "  test           - Run basic image tests"
+	@echo "  pgvector-test  - Smoke-test that pgvector extension files are present"
+	@echo "  help           - Show this help message"
 	@echo ""
 	@echo "Variables:"
 	@echo "  REGISTRY     - Container registry (default: $(REGISTRY))"

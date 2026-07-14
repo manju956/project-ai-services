@@ -1,7 +1,10 @@
 #
-# PostgreSQL 18 on UBI 9 Minimal
+# PostgreSQL 18 + pgvector on UBI 9 Minimal
 #
-# This Dockerfile creates a PostgreSQL 18 image based on Red Hat Universal Base Image 9 Minimal
+# Builds a PostgreSQL 18 image based on Red Hat Universal Base Image 9 Minimal,
+# with the pgvector extension pre-installed from the official PGDG RPM repository.
+# Supports ppc64le (and x86_64 / aarch64) — pgvector_18 is available on all three
+# in the PGDG yum repo.
 #
 
 FROM registry.access.redhat.com/ubi9/ubi:9.8 AS gosu-builder
@@ -92,10 +95,16 @@ RUN set -ex; \
 	microdnf install ${DNF_FLAGS} --enablerepo=pgdg18 -y \
 		postgresql18-server \
 		postgresql18-contrib \
+		pgvector_18 \
 	; \
 	microdnf remove ${DNF_FLAGS} -y wget; \
 	microdnf clean all; \
 	postgres --version
+
+# Verify pgvector shared library is present at the expected path
+RUN set -eux; \
+	ls /usr/pgsql-${PG_MAJOR}/lib/vector.so; \
+	ls /usr/pgsql-${PG_MAJOR}/share/extension/vector.control
 
 # make the sample config easier to munge (and "correct by default")
 RUN set -eux; \
@@ -115,6 +124,11 @@ VOLUME /var/lib/pgsql
 
 COPY docker-entrypoint.sh docker-ensure-initdb.sh /usr/local/bin/
 RUN ln -sT docker-ensure-initdb.sh /usr/local/bin/docker-enforce-initdb.sh
+
+# Install pgvector extension into every new database on first start.
+# The SHARED_PRELOAD_LIBRARIES env is not needed for pgvector (it is not a
+# background worker); the extension is loaded on first CREATE EXTENSION call.
+COPY initdb-pgvector.sql /docker-entrypoint-initdb.d/001-pgvector.sql
 
 # Support arbitrary user IDs (OpenShift requirement)
 USER 26
