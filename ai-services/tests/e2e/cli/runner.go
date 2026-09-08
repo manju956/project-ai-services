@@ -617,7 +617,13 @@ func ListImage(ctx context.Context, cfg *config.Config, templateName string, app
 }
 
 // PullImage pulls images for the given application template.
+// Registry logins are refreshed before the pull to avoid stale credentials.
+// The pull itself is retried up to pullImageMaxRetries times to tolerate
+// transient network errors on slow CI links (e.g. ppc64le Jenkins nodes).
 func PullImage(ctx context.Context, cfg *config.Config, templateName string, appRuntime string) error {
+	const pullImageMaxRetries = 3
+	const pullImageRetryDelay = 15 * time.Second
+
 	url, uname, pswd := bootstrap.GetPodManCreds()
 	if err := bootstrap.PodmanRegistryLogin(url, uname, pswd); err != nil {
 		return fmt.Errorf("pull images failed due to podman login err: %w", err)
@@ -628,7 +634,25 @@ func PullImage(ctx context.Context, cfg *config.Config, templateName string, app
 		return fmt.Errorf("pull images failed due to podman login err: %w", err)
 	}
 
-	output, err := runCLI(ctx, cfg, "pull images", "application", "image", "pull", "--template", templateName, "--runtime", appRuntime)
+	var (
+		output string
+		err    error
+	)
+	for attempt := 1; attempt <= pullImageMaxRetries; attempt++ {
+		output, err = runCLI(ctx, cfg, "pull images", "application", "image", "pull", "--template", templateName, "--runtime", appRuntime)
+		if err == nil {
+			break
+		}
+		if attempt < pullImageMaxRetries {
+			logger.Warningf("[CLI] image pull attempt %d/%d failed: %v — retrying in %s",
+				attempt, pullImageMaxRetries, err, pullImageRetryDelay)
+			select {
+			case <-ctx.Done():
+				return fmt.Errorf("pull images context cancelled: %w", ctx.Err())
+			case <-time.After(pullImageRetryDelay):
+			}
+		}
+	}
 	if err != nil {
 		return err
 	}

@@ -612,27 +612,31 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 				ginkgo.Skip("CATALOG_PASSWORD not set — skipping catalog logout test")
 			}
 
-			ctx, cancel := withTimeout(2 * time.Minute)
-			defer cancel()
+			// logout + whoami phase: 2-minute budget
+			logoutCtx, logoutCancel := withTimeout(2 * time.Minute)
+			defer logoutCancel()
 
-			_, err := cli.CatalogLogin(ctx, cfg, catalogBackendURL, catalogUsername, catalogPassword, appRuntime, catalogInsecure)
+			_, err := cli.CatalogLogin(logoutCtx, cfg, catalogBackendURL, catalogUsername, catalogPassword, appRuntime, catalogInsecure)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 
-			logoutOutput, err := cli.CatalogLogout(ctx, cfg, appRuntime)
+			logoutOutput, err := cli.CatalogLogout(logoutCtx, cfg, appRuntime)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(cli.ValidateCatalogLogoutOutput(logoutOutput)).To(gomega.Succeed())
 
-			_, whoamiErr := cli.CatalogWhoami(ctx, cfg, appRuntime)
+			_, whoamiErr := cli.CatalogWhoami(logoutCtx, cfg, appRuntime)
 			gomega.Expect(whoamiErr).To(gomega.HaveOccurred(), "whoami should fail after logout but succeeded")
 			logger.Infoln("[TEST] Catalog logout invalidated session — whoami correctly rejected")
 
-			// Re-login so downstream specs retain a valid session.
-			_, err = cli.CatalogLogin(ctx, cfg, catalogBackendURL, catalogUsername, catalogPassword, appRuntime, catalogInsecure)
+			// Re-login so downstream specs retain a valid session. Use a fresh
+			// context so an exhausted logoutCtx does not silently prevent the login.
+			reloginCtx, reloginCancel := withTimeout(1 * time.Minute)
+			defer reloginCancel()
+			_, err = cli.CatalogLogin(reloginCtx, cfg, catalogBackendURL, catalogUsername, catalogPassword, appRuntime, catalogInsecure)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			logger.Infoln("[TEST] Catalog logout / session-invalidation validated successfully!")
 		})
 	})
-	ginkgo.Context("Application Image Command Tests", func() {
+	ginkgo.Context("Application Image Command Tests", ginkgo.Ordered, func() {
 		ginkgo.It("lists images for rag template", ginkgo.Label("spyre-independent", "summarization-tests"), func() {
 			if providedAppName != "" {
 				ginkgo.Skip("Skipping image list — using existing application")
@@ -657,6 +661,9 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 			}
 			ctx, cancel := withTimeout(30 * time.Minute)
 			defer cancel()
+			// Refresh the catalog token before model download — the 15-min TTL may have
+			// elapsed during the preceding image pull on slow CI network links.
+			catalogLoginWithDiscovery(ctx, false)
 			output, err := cli.ModelDownload(ctx, cfg, templateName, appRuntime)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
 			gomega.Expect(cli.ValidateModelDownloadOutput(output, templateName, appRuntime)).To(gomega.Succeed())
