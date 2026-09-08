@@ -408,7 +408,7 @@ var _ = ginkgo.AfterSuite(func() {
 })
 
 var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
-	ginkgo.Context("Environment & CLI Sanity Tests", func() {
+	ginkgo.Context("Environment & CLI Sanity Tests", ginkgo.Ordered, func() {
 		ginkgo.It("runs help command", ginkgo.Label("spyre-independent"), func() {
 			output, err := cli.HelpCommand(ctx, cfg, []string{"help"})
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -442,7 +442,7 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 			logger.Infoln("[TEST] Application model list validated successfully!")
 		})
 	})
-	ginkgo.Context("Catalog CLI Sanity Tests", func() {
+	ginkgo.Context("Catalog CLI Sanity Tests", ginkgo.Ordered, func() {
 		ginkgo.It("shows catalog apiserver help", ginkgo.Label("spyre-independent"), func() {
 			output, err := cli.CatalogApiServerHelp(ctx, cfg, appRuntime)
 			gomega.Expect(err).NotTo(gomega.HaveOccurred())
@@ -469,7 +469,7 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 			logger.Infoln("[TEST] Catalog dbmigrate help validated successfully!")
 		})
 	})
-	ginkgo.Context("Bootstrap Steps", func() {
+	ginkgo.Context("Bootstrap Steps", ginkgo.Ordered, func() {
 		ginkgo.It("runs bootstrap configure", ginkgo.Label("spyre-dependent", "summarization-tests"), func() {
 			if providedAppName != "" {
 				ginkgo.Skip("Skipping bootstrap configure — using existing application")
@@ -670,7 +670,7 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 			logger.Infoln("[TEST] Application model download validated successfully!")
 		})
 	})
-	ginkgo.Context("Application Creation", func() {
+	ginkgo.Context("Application Creation", ginkgo.Ordered, func() {
 		ginkgo.It("creates application with specified template and validates endpoints", ginkgo.Label("spyre-dependent", "summarization-tests"), func() {
 			if providedAppName != "" {
 				// Extract URLs from existing application
@@ -759,7 +759,7 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 			logger.Infof("[TEST] Application %s created, healthy, and endpoints validated", appName)
 		})
 	})
-	ginkgo.Context("Application Observability", func() {
+	ginkgo.Context("Application Observability", ginkgo.Ordered, func() {
 		ginkgo.BeforeEach(func() {
 			if providedAppName != "" {
 				ginkgo.Skip("Skipping observability specs — using existing application")
@@ -840,7 +840,7 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 			}
 		})
 	})
-	ginkgo.Context("Runtime Operations", func() {
+	ginkgo.Context("Runtime Operations", ginkgo.Ordered, func() {
 		ginkgo.It("stops the application", ginkgo.Label("spyre-dependent", "summarization-tests"), func() {
 			if templateName == "summarize" {
 				ginkgo.Skip("Skipping stop/start for summarize template — LLM reload would delay summarization tests")
@@ -900,7 +900,7 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 		})
 
 	})
-	ginkgo.Context("RAG Golden Dataset Validation", ginkgo.Label("golden-dataset-validation"), func() {
+	ginkgo.Context("RAG Golden Dataset Validation", ginkgo.Ordered, ginkgo.Label("golden-dataset-validation"), func() {
 		ginkgo.BeforeAll(ginkgo.NodeTimeout(10*time.Hour), func(ctx context.Context) {
 			if appRuntime == "openshift" {
 				ginkgo.Skip("Skipping RAG Golden Dataset Validation for OpenShift runtime")
@@ -1140,7 +1140,7 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 				logger.Infof("[RAG] Golden dataset validation completed")
 			})
 	})
-	ginkgo.Context("Digitization Tests", ginkgo.Label("spyre-dependent", "digitization-tests"), func() {
+	ginkgo.Context("Digitization Tests", ginkgo.Ordered, ginkgo.Label("spyre-dependent", "digitization-tests"), func() {
 		var digitizeBaseURL string
 		var pdfPath string
 		var createdJobIDs []string
@@ -1961,7 +1961,7 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 		})
 	})
 
-	ginkgo.Context("Summarization Tests", ginkgo.Label("summarization-tests"), func() {
+	ginkgo.Context("Summarization Tests", ginkgo.Ordered, ginkgo.Label("summarization-tests"), func() {
 		var summarizeBaseURL string
 		var createdJobIDs []string
 
@@ -2200,7 +2200,7 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 		})
 	})
 
-	ginkgo.Context("Synchronous Summarization Tests", ginkgo.Label("summarization-tests"), func() {
+	ginkgo.Context("Synchronous Summarization Tests", ginkgo.Ordered, ginkgo.Label("summarization-tests"), func() {
 		// summarizeBaseURL is resolved fresh in BeforeAll from the running app.
 		var syncSummarizeBaseURL string
 
@@ -2707,7 +2707,7 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 		})
 	})
 
-	ginkgo.Context("Similarity Tests", ginkgo.Label("spyre-dependent", "similarity-tests"), func() {
+	ginkgo.Context("Similarity Tests", ginkgo.Ordered, ginkgo.Label("spyre-dependent", "similarity-tests"), func() {
 		var similarityBaseURL string
 		var digitizeBaseURL string
 		var createdJobIDs []string
