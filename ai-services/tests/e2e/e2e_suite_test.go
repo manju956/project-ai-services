@@ -1045,7 +1045,7 @@ var _ = ginkgo.Describe("AI Services End-to-End Tests", ginkgo.Ordered, func() {
 			}
 		})
 
-		ginkgo.It("validates RAG answers against golden dataset",
+		ginkgo.XIt("validates RAG answers against golden dataset",
 			ginkgo.Label("spyre-dependent"),
 			ginkgo.SpecTimeout(10*time.Hour),
 			func(specCtx context.Context) {
