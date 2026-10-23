@@ -1,0 +1,35 @@
+# poc_ibmi — thin layer on top of the existing forecast image.
+#
+# The forecast image (services/forecast/Containerfile) already has the ppc64le
+# conda stack (numpy<2, pandas, scikit-learn, pyarrow, AutoGluon, FastAPI).
+# This layer only adds the IBM i client library.  Code is NOT baked in: run.sh
+# bind-mounts services/forecast at /app and services/mapepire at /opt/mapepire,
+# so scripts can be edited without a rebuild and models/data persist on the host.
+#
+# Build (from services/forecast/poc_ibmi; ./run.sh build does this for you):
+#   podman build -t forecast-poc-ibmi:latest \
+#       --build-arg BASE_IMAGE=localhost/forecast:latest .
+#   # SSH-tunnel mode as well:  --build-arg WITH_SSH_TUNNEL=1
+ARG BASE_IMAGE=localhost/forecast:latest
+FROM ${BASE_IMAGE}
+
+ARG WITH_SSH_TUNNEL=0
+
+# numpy is pinned <2 for every install in this layer: no numpy 2.x binary is
+# available for ppc64le, so pip would otherwise try (and fail) to compile it.
+# mapepire-python is pure Python (dataclasses-json, websockets, pep249abc).
+# paramiko (only needed by sshtunnel) comes from conda-forge to avoid compiling
+# bcrypt/pynacl (Rust) on ppc64le; sshtunnel itself is pure Python.
+RUN printf 'numpy<2\n' > /etc/poc-constraints.txt \
+    && pip install --no-cache-dir -c /etc/poc-constraints.txt \
+        "mapepire-python>=0.2.0" \
+        "python-dotenv>=1.0.0" \
+    && if [ "$WITH_SSH_TUNNEL" = "1" ]; then \
+         conda install -n forecast -y -c conda-forge "numpy<2" paramiko \
+         && conda clean -afy \
+         && pip install --no-cache-dir --no-deps "sshtunnel>=0.4.0"; \
+       fi \
+    && python -c "import numpy, mapepire_python; print('numpy', numpy.__version__)" \
+    && rm -rf /root/.cache
+
+WORKDIR /app

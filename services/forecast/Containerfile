@@ -1,0 +1,80 @@
+# Lightweight Red Hat Universal Base Image (UBI 9 Minimal)
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+
+# Environment variables
+ENV PYTHONUNBUFFERED=1 \
+    OMP_NUM_THREADS=4 \
+    PATH=/opt/conda/envs/forecast/bin:/opt/conda/bin:$PATH
+
+# Install minimal OS utilities required for extraction and clean cache immediately
+RUN microdnf install -y \
+    gcc \
+    tar \
+    bzip2 \
+    gzip \
+    findutils \
+    shadow-utils \
+    && microdnf clean all \
+    && rm -rf /var/cache/yum /var/cache/dnf
+
+# Install Miniforge for multi-arch (ppc64le / aarch64 / x86_64) in a single compact layer
+RUN ARCH=$(uname -m) && \
+    if [ "$ARCH" = "ppc64le" ]; then \
+        MINIFORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-ppc64le.sh"; \
+    elif [ "$ARCH" = "aarch64" ]; then \
+        MINIFORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-aarch64.sh"; \
+    else \
+        MINIFORGE_URL="https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"; \
+    fi && \
+    curl -fsSL "${MINIFORGE_URL}" -o /tmp/miniforge.sh && \
+    bash /tmp/miniforge.sh -b -p /opt/conda && \
+    rm -f /tmp/miniforge.sh && \
+    /opt/conda/bin/conda clean -afy
+
+# Create Python 3.11 environment with pre-built conda-forge packages for ppc64le
+# Pre-installing pyarrow, psutil, pyyaml, etc. from conda-forge avoids pip attempting to build Rust/C++ wheels from source
+RUN conda create -n forecast python=3.11 -y && \
+    conda install -n forecast -y -c conda-forge \
+        "numpy<2" \
+        pandas \
+        scipy \
+        scikit-learn \
+        lightgbm \
+        xgboost \
+        pyarrow \
+        networkx \
+        tqdm \
+        matplotlib \
+        boto3 \
+        s3transfer \
+        joblib \
+        psutil \
+        pyyaml \
+        packaging \
+        protobuf \
+        fastapi \
+        uvicorn \
+        httpx \
+        requests \
+        pydantic \
+    && conda clean -afy \
+    && rm -rf /root/.cache
+
+# Install AutoGluon Tabular and KaggleHub using --no-build-isolation to prevent pip from rebuilding numpy/pandas
+RUN /opt/conda/envs/forecast/bin/pip install --no-cache-dir --no-build-isolation --prefer-binary \
+    --extra-index-url=https://wheels.developerfirst.ibm.com/ppc64le/linux/ \
+    autogluon.tabular \
+    kagglehub \
+    && rm -rf /root/.cache
+
+# Set working directory
+WORKDIR /app
+
+# Copy application code and dataset
+COPY . /app
+
+# Expose FastAPI port
+EXPOSE 8000
+
+# Default command: start FastAPI forecasting service
+CMD ["uvicorn", "forecast_ag:app", "--host", "0.0.0.0", "--port", "8000"]

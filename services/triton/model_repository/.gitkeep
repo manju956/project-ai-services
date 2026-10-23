@@ -1,0 +1,16 @@
+# Triton model repository placeholder
+# This directory is populated by export_to_onnx.py.
+# Structure after export:
+#
+#   model_repository/
+#     credit_default/
+#       config.pbtxt      ← written by export_to_onnx.py
+#       1/
+#         model.onnx      ← written by export_to_onnx.py
+#
+# Mount this directory into the Triton server container:
+#   podman run --rm \
+#     -v $(pwd)/model_repository:/models \
+#     -p 8000:8000 -p 8001:8001 -p 8002:8002 \
+#     quay.io/powercloud/tritonserver:latest \
+#     tritonserver --model-repository=/models

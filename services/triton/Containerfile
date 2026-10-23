@@ -1,0 +1,93 @@
+# Triton Inference Client — container image
+#
+# This image contains:
+#   - export_to_onnx.py  : exports the AutoGluon best model to ONNX
+#   - infer_client.py    : gRPC protobuf client for the Triton server
+#
+# It does NOT contain the Triton server itself.
+# The server runs from: quay.io/powercloud/tritonserver:latest
+#
+# ── Workflow ──────────────────────────────────────────────────────────────────
+#
+#  Step 1 — Export AutoGluon model to ONNX (run once after training):
+#    podman run --rm \
+#      -v /path/to/ag_forecast_model:/ag_model:ro,Z \
+#      -v /path/to/model_repository:/models:Z \
+#      -e MODEL_DIR=/ag_model \
+#      -e TRITON_REPO=/models \
+#      triton-client:latest python export_to_onnx.py
+#
+#  Step 2 — Start Triton server with the exported model:
+#    podman run --rm \
+#      -v /path/to/model_repository:/models:ro,Z \
+#      -p 8000:8000 -p 8001:8001 -p 8002:8002 \
+#      quay.io/powercloud/tritonserver:latest \
+#      tritonserver --model-repository=/models
+#
+#  Step 3 — Run inference smoke-test:
+#    podman run --rm \
+#      -e TRITON_HOST=<triton-server-ip> \
+#      triton-client:latest python infer_client.py
+#
+# Build:
+#   podman build -t triton-client:latest -f Containerfile .
+
+FROM registry.access.redhat.com/ubi9/ubi-minimal:latest
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PATH=/opt/venv/bin:$PATH
+
+# ----- OS + build dependencies (single layer; build tools removed after pip) --
+# gcc / make / python3.11-devel / libffi-devel / openssl-devel: compile wheels
+# curl-minimal is pre-installed on UBI minimal — used for rustup bootstrap
+RUN microdnf install -y \
+        python3.11 \
+        python3.11-pip \
+        python3.11-devel \
+        shadow-utils \
+        gcc \
+        make \
+        libffi-devel \
+        openssl-devel \
+    && python3.11 -m venv /opt/venv \
+    && /opt/venv/bin/pip install --no-cache-dir --upgrade pip \
+    && export RUSTUP_HOME=/tmp/rustup \
+              CARGO_HOME=/tmp/cargo \
+              PATH="/tmp/cargo/bin:$PATH" \
+    && curl -sSf https://sh.rustup.rs | sh -s -- -y --no-modify-path \
+         --default-toolchain stable --profile minimal \
+    && /opt/venv/bin/pip install --no-cache-dir --prefer-binary \
+        --extra-index-url=https://wheels.developerfirst.ibm.com/ppc64le/linux/ \
+        "numpy<2" \
+        "autogluon.tabular>=1.0.0" \
+        "xgboost>=1.7.0" \
+        "lightgbm>=4.0.0" \
+        "skl2onnx>=1.16.0" \
+        "onnxmltools>=1.12.0" \
+        "tritonclient[all]>=2.43.0" \
+        "pandas>=2.0.0" \
+    && rm -rf /tmp/rustup /tmp/cargo /root/.cargo \
+    && microdnf remove -y \
+        gcc \
+        make \
+        python3.11-devel \
+        libffi-devel \
+        openssl-devel \
+    && microdnf clean all \
+    && rm -rf /var/cache/yum /var/cache/dnf /root/.cache
+
+# ----- Non-root user ----------------------------------------------------------
+RUN useradd -r -u 1001 -g 0 -s /sbin/nologin appuser
+
+# ----- Application code -------------------------------------------------------
+WORKDIR /app
+COPY export_to_onnx.py infer_client.py entrypoint.sh ./
+
+RUN chown -R 1001:0 /app && chmod -R g=u /app \
+    && chmod +x /app/entrypoint.sh
+
+# Container starts as root so the entrypoint can chown mounted output
+# directories (e.g. /models) before dropping to UID 1001 via runuser.
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["python", "infer_client.py"]
